@@ -1,0 +1,11 @@
+[bandit]
+# DevSecOps Lab – Bandit SAST Configuration
+
+[tool:bandit]
+exclude_dirs = tests,venv,.venv,build,dist
+skips =
+
+# Severity: LOW, MEDIUM, HIGH
+# Confidence: LOW, MEDIUM, HIGH
+severity  = MEDIUM
+confidence = MEDIUM

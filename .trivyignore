@@ -1,0 +1,5 @@
+# .trivyignore – known false positives / accepted risks
+# Format: CVE-ID  [expiry-date]  # reason
+
+# Example accepted risks (document each with reason + expiry):
+# CVE-2021-XXXXX 2024-12-31  # No fix available, mitigated by WAF

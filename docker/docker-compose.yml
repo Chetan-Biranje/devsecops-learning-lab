@@ -1,0 +1,108 @@
+version: "3.9"
+
+# ── Networks ──────────────────────────────────────────────
+networks:
+  frontend:
+  backend:
+  security:
+
+# ── Volumes ───────────────────────────────────────────────
+volumes:
+  db_data:
+  zap_reports:
+  grafana_data:
+  prometheus_data:
+
+services:
+
+  # ── Application ─────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: devsecops-lab-app:latest
+    container_name: devsecops_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-dev-only}
+      - DATABASE_URL=sqlite:////data/app.db
+      - FLASK_DEBUG=false
+    volumes:
+      - db_data:/data
+    networks:
+      - frontend
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "com.devsecops.role=app"
+
+  # ── OWASP ZAP (DAST) ────────────────────────────────────
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: devsecops_zap
+    depends_on:
+      app:
+        condition: service_healthy
+    command: >
+      zap-baseline.py -t http://app:5000
+      -r /zap/reports/baseline-report.html
+      -J /zap/reports/baseline-report.json
+      --auto
+    volumes:
+      - zap_reports:/zap/reports
+    networks:
+      - frontend
+      - security
+    profiles:
+      - dast
+
+  # ── Prometheus ────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: devsecops_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    networks:
+      - backend
+      - security
+    profiles:
+      - monitoring
+
+  # ── Grafana ───────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: devsecops_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+    profiles:
+      - monitoring

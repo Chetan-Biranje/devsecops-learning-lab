@@ -1,0 +1,199 @@
+---
+# ═══════════════════════════════════════════════════════
+#  DevSecOps Lab – Server Hardening Playbook
+#  CIS Benchmark Level 1 (Ubuntu 22.04)
+# ═══════════════════════════════════════════════════════
+
+- name: Server Security Hardening
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    ssh_port: 2222
+    allowed_ssh_users: ["ubuntu", "deploy"]
+    ntp_servers:
+      - "0.pool.ntp.org"
+      - "1.pool.ntp.org"
+
+  tasks:
+
+    # ── System Updates ────────────────────────────────────
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: true
+        upgrade: safe
+        cache_valid_time: 3600
+
+    - name: Install security packages
+      apt:
+        name:
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+          - auditd
+          - libpam-pwquality
+          - aide
+          - rkhunter
+          - lynis
+          - chrony
+        state: present
+
+    # ── Automatic Security Updates ────────────────────────
+    - name: Configure unattended-upgrades
+      copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        content: |
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}-security";
+          };
+          Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+          Unattended-Upgrade::MinimalSteps "true";
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+          Unattended-Upgrade::Automatic-Reboot "false";
+        mode: "0644"
+
+    # ── SSH Hardening ─────────────────────────────────────
+    - name: Configure SSH (hardened)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+        backup: true
+      loop:
+        - { regexp: '^#?Port',                  line: "Port {{ ssh_port }}" }
+        - { regexp: '^#?PermitRootLogin',        line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitEmptyPasswords',   line: 'PermitEmptyPasswords no' }
+        - { regexp: '^#?X11Forwarding',          line: 'X11Forwarding no' }
+        - { regexp: '^#?MaxAuthTries',           line: 'MaxAuthTries 3' }
+        - { regexp: '^#?ClientAliveInterval',    line: 'ClientAliveInterval 300' }
+        - { regexp: '^#?ClientAliveCountMax',    line: 'ClientAliveCountMax 2' }
+        - { regexp: '^#?Protocol',               line: 'Protocol 2' }
+        - { regexp: '^#?PubkeyAuthentication',   line: 'PubkeyAuthentication yes' }
+        - { regexp: '^#?UsePAM',                 line: 'UsePAM yes' }
+        - { regexp: '^#?LoginGraceTime',         line: 'LoginGraceTime 60' }
+      notify: Restart SSH
+
+    - name: Set AllowUsers in SSH config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowUsers'
+        line: "AllowUsers {{ allowed_ssh_users | join(' ') }}"
+      notify: Restart SSH
+
+    # ── UFW Firewall ──────────────────────────────────────
+    - name: Configure UFW – deny all inbound by default
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: UFW – allow SSH
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: UFW – allow HTTP + HTTPS
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: ["80", "443"]
+
+    # ── Fail2Ban ──────────────────────────────────────────
+    - name: Configure Fail2Ban
+      copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [DEFAULT]
+          bantime  = 3600
+          findtime = 600
+          maxretry = 3
+          backend  = auto
+
+          [sshd]
+          enabled  = true
+          port     = {{ ssh_port }}
+          filter   = sshd
+          logpath  = /var/log/auth.log
+          maxretry = 3
+
+          [nginx-http-auth]
+          enabled  = true
+          maxretry = 5
+        mode: "0644"
+      notify: Restart Fail2Ban
+
+    # ── Kernel Hardening (sysctl) ─────────────────────────
+    - name: Apply security sysctl settings
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        # Disable IP forwarding (unless router)
+        - { name: net.ipv4.ip_forward,                    value: "0" }
+        # Disable ICMP redirects
+        - { name: net.ipv4.conf.all.accept_redirects,     value: "0" }
+        - { name: net.ipv4.conf.default.accept_redirects, value: "0" }
+        # Enable SYN flood protection
+        - { name: net.ipv4.tcp_syncookies,                value: "1" }
+        # Disable source routing
+        - { name: net.ipv4.conf.all.accept_source_route,  value: "0" }
+        # Log martian packets
+        - { name: net.ipv4.conf.all.log_martians,         value: "1" }
+        # Disable IPv6 if not needed
+        - { name: net.ipv6.conf.all.disable_ipv6,         value: "1" }
+        # ASLR
+        - { name: kernel.randomize_va_space,              value: "2" }
+        # Restrict dmesg
+        - { name: kernel.dmesg_restrict,                  value: "1" }
+        # Restrict ptrace
+        - { name: kernel.yama.ptrace_scope,               value: "1" }
+
+    # ── Audit daemon ──────────────────────────────────────
+    - name: Enable and start auditd
+      systemd:
+        name: auditd
+        enabled: true
+        state: started
+
+    # ── NTP ───────────────────────────────────────────────
+    - name: Configure chrony NTP
+      template:
+        src: chrony.conf.j2
+        dest: /etc/chrony/chrony.conf
+        mode: "0644"
+      notify: Restart Chrony
+      ignore_errors: true
+
+    # ── Remove unnecessary packages ───────────────────────
+    - name: Remove risky packages
+      apt:
+        name:
+          - telnet
+          - rsh-client
+          - talk
+          - ftp
+        state: absent
+        purge: true
+
+  handlers:
+    - name: Restart SSH
+      systemd:
+        name: ssh
+        state: restarted
+
+    - name: Restart Fail2Ban
+      systemd:
+        name: fail2ban
+        state: restarted
+
+    - name: Restart Chrony
+      systemd:
+        name: chrony
+        state: restarted

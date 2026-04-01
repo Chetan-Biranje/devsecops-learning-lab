@@ -1,0 +1,35 @@
+rules:
+  - id: hardcoded-secret
+    patterns:
+      - pattern: $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: .*(password|secret|token|api_key|apikey|passwd|pwd).*
+    message: "Possible hardcoded secret in variable '$VAR'"
+    languages: [python]
+    severity: ERROR
+
+  - id: sql-injection-risk
+    patterns:
+      - pattern: |
+          $DB.execute("..." % ...)
+      - pattern: |
+          $DB.execute("..." + ...)
+    message: "Potential SQL injection – use parameterised queries"
+    languages: [python]
+    severity: ERROR
+
+  - id: debug-enabled
+    patterns:
+      - pattern: app.run(..., debug=True, ...)
+    message: "Flask debug mode must not be enabled in production"
+    languages: [python]
+    severity: WARNING
+
+  - id: weak-hash
+    patterns:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+    message: "MD5/SHA1 are cryptographically weak – use SHA-256 or better"
+    languages: [python]
+    severity: WARNING
