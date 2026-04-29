@@ -62,7 +62,7 @@ jobs:
           semgrep --config=auto app/src/ || true
 
       - name: Upload SAST results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sast-results
           path: security/sast/
@@ -112,7 +112,7 @@ jobs:
           pip-audit -r app/requirements.txt || true
 
       - name: Upload SCA results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sca-results
           path: security/sca/
@@ -176,7 +176,7 @@ jobs:
       --cov-fail-under=80
       
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: security/coverage.xml
@@ -290,7 +290,7 @@ jobs:
           soft_fail: true
 
       - name: Upload IaC scan results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: iac-results
           path: security/iac/
@@ -322,7 +322,7 @@ jobs:
           fail_action: false
 
       - name: Upload ZAP report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: zap-report
