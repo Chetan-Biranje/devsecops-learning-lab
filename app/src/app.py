@@ -233,7 +233,8 @@ def create_note():
     try:
         content = sanitize_input(content, max_length=5000)
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        logger.warning("Input validation failed in create_note: %s", e)
+        return jsonify({"error": "invalid input"}), 400
 
     db = get_db()
     db.execute(
