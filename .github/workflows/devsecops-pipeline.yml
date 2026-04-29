@@ -165,14 +165,16 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run tests
-        working-directory: app
-        run: |
-          pytest tests/ -v \
-            --cov=src \
-            --cov-report=xml:../security/coverage.xml \
-            --cov-report=term-missing \
-            --cov-fail-under=80
-
+  working-directory: app
+  env:
+    PYTHONPATH: /home/runner/work/devsecops-learning-lab/devsecops-learning-lab/app
+  run: |
+    pytest tests/ -v \
+      --cov=src \
+      --cov-report=xml:../security/coverage.xml \
+      --cov-report=term-missing \
+      --cov-fail-under=80
+      
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         with:
