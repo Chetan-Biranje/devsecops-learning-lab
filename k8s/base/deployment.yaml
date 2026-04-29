@@ -28,9 +28,9 @@ spec:
       # ── Security Context (Pod level) ─────────────────
       securityContext:
         runAsNonRoot: true
-        runAsUser:    1000
-        runAsGroup:   1000
-        fsGroup:      2000
+        runAsUser:    65534
+        runAsGroup:   65534
+        fsGroup:      65534
         seccompProfile:
           type: RuntimeDefault
 
@@ -51,8 +51,8 @@ spec:
 
       containers:
         - name: app
-          image: ghcr.io/chetan-biranje/devsecops-lab-app:latest
-          imagePullPolicy: Always
+          image: ghcr.io/chetan-biranje/devsecops-lab-app:v1.0.0@sha256:abc123def456
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
               name: http
@@ -63,7 +63,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem:   true
             runAsNonRoot:             true
-            runAsUser:                1000
+            runAsUser:                65534
             capabilities:
               drop: [ALL]
 
@@ -80,11 +80,10 @@ spec:
           env:
             - name: FLASK_DEBUG
               value: "false"
-            - name: SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: secret-key
+
+          envFrom:
+            - secretRef:
+                name: app-secrets
 
           # ── Health probes ────────────────────────────────
           livenessProbe:
@@ -107,10 +106,17 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: secrets
+              mountPath: /etc/secrets
+              readOnly: true
 
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: secrets
+          secret:
+            secretName: app-secrets
+            defaultMode: 0400
 
       # ── Image pull secret (GHCR) ─────────────────────
       imagePullSecrets:
