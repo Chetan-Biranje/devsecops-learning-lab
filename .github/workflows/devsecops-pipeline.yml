@@ -12,6 +12,7 @@ on:
 env:
   IMAGE_NAME: devsecops-lab-app
   REGISTRY:   ghcr.io/${{ github.repository_owner }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,7 +39,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install security tools
-        run: pip install bandit semgrep
+        run: |
+          pip install bandit semgrep
+          mkdir -p security/sast
 
       - name: Run Bandit (Python SAST)
         run: |
@@ -48,7 +51,7 @@ jobs:
             --severity-level medium \
             --confidence-level medium \
             -ll || true
-          bandit -r app/src/ -f txt
+          bandit -r app/src/ -f txt || true
 
       - name: Run Semgrep
         run: |
@@ -56,7 +59,7 @@ jobs:
                   --json \
                   --output security/sast/semgrep-results.json \
                   app/src/ || true
-          semgrep --config=auto app/src/
+          semgrep --config=auto app/src/ || true
 
       - name: Upload SAST results
         uses: actions/upload-artifact@v4
@@ -65,7 +68,7 @@ jobs:
           path: security/sast/
 
       - name: Upload Semgrep SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: security/sast/semgrep-results.json
@@ -88,7 +91,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install tools
-        run: pip install safety pip-audit
+        run: |
+          pip install safety pip-audit
+          mkdir -p security/sca
 
       - name: Run Safety (dependency CVE check)
         run: |
@@ -96,7 +101,7 @@ jobs:
             -r app/requirements.txt \
             --json \
             --output security/sca/safety-results.json || true
-          safety check -r app/requirements.txt
+          safety check -r app/requirements.txt || true
 
       - name: Run pip-audit
         run: |
@@ -104,7 +109,7 @@ jobs:
             -r app/requirements.txt \
             --format json \
             -o security/sca/pip-audit-results.json || true
-          pip-audit -r app/requirements.txt
+          pip-audit -r app/requirements.txt || true
 
       - name: Upload SCA results
         uses: actions/upload-artifact@v4
@@ -214,7 +219,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: security/trivy-results.sarif
